@@ -1,0 +1,44 @@
+worker_processes  1;
+events { worker_connections 1024; }
+
+http {
+    upstream backend_upstream {
+        server ${PRIMARY_HOST}:${PORT} max_fails=1 fail_timeout=2s;
+        server ${BACKUP_HOST}:${PORT} backup;
+        keepalive 16;
+    }
+
+    server {
+        listen 80;
+        server_name _;
+
+        proxy_connect_timeout 1s;
+        proxy_send_timeout 5s;
+        proxy_read_timeout 5s;
+        proxy_buffering off;
+
+        proxy_next_upstream error timeout http_500 http_502 http_503 http_504 http_429;
+        proxy_next_upstream_tries 2;
+        proxy_next_upstream_timeout 8s;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        location / {
+            proxy_pass http://backend_upstream;
+        }
+
+        location /version {
+            proxy_pass http://backend_upstream/version;
+        }
+
+        location /nginx_status {
+            stub_status on;
+            access_log off;
+            allow 127.0.0.1;
+            deny all;
+        }
+    }
+}
